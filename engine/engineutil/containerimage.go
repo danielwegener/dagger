@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"time"
 
 	"github.com/containerd/containerd/v2/core/content"
 	archiveexporter "github.com/containerd/containerd/v2/core/images/archive"
@@ -125,6 +126,7 @@ func (c *Client) buildExportRequest(
 func (c *Client) exportCommitOpts(
 	forceCompression string,
 	useOCIMediaTypes bool,
+	sourceDateEpoch *int64,
 ) (imageexport.CommitOpts, error) {
 	refCfg := cacheconfig.RefConfig{
 		Compression: compression.New(compression.Default),
@@ -146,10 +148,16 @@ func (c *Client) exportCommitOpts(
 		}
 		refCfg.Compression = compression.New(ctype).SetForce(true)
 	}
-	return imageexport.CommitOpts{
+	opts := imageexport.CommitOpts{
 		RefCfg:   refCfg,
 		OCITypes: useOCIMediaTypes,
-	}, nil
+	}
+	if sourceDateEpoch != nil {
+		epoch := time.Unix(*sourceDateEpoch, 0).UTC()
+		opts.Epoch = &epoch
+		opts.RewriteTimestamp = true
+	}
+	return opts, nil
 }
 
 func (c *Client) assembleExportedImage(
@@ -157,12 +165,13 @@ func (c *Client) assembleExportedImage(
 	inputByPlatform map[string]ContainerExport,
 	useOCIMediaTypes bool,
 	forceCompression string,
+	sourceDateEpoch *int64,
 ) (*imageexport.ExportedImage, error) {
 	req, err := c.buildExportRequest(inputByPlatform)
 	if err != nil {
 		return nil, err
 	}
-	commitOpts, err := c.exportCommitOpts(forceCompression, useOCIMediaTypes)
+	commitOpts, err := c.exportCommitOpts(forceCompression, useOCIMediaTypes, sourceDateEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -175,6 +184,7 @@ func (c *Client) WriteContainerImageTarball(
 	inputByPlatform map[string]ContainerExport,
 	useOCIMediaTypes bool,
 	forceCompression string,
+	sourceDateEpoch *int64,
 ) error {
 	ctx, cancel, err := c.withClientCloseCancel(ctx)
 	if err != nil {
@@ -182,7 +192,7 @@ func (c *Client) WriteContainerImageTarball(
 	}
 	defer cancel(errors.New("write container image tarball done"))
 
-	exported, err := c.assembleExportedImage(ctx, inputByPlatform, useOCIMediaTypes, forceCompression)
+	exported, err := c.assembleExportedImage(ctx, inputByPlatform, useOCIMediaTypes, forceCompression, sourceDateEpoch)
 	if err != nil {
 		return err
 	}
@@ -219,6 +229,7 @@ func (c *Client) PublishContainerImage(
 	forceCompression string,
 	network serverresolver.NetworkConfig,
 	registryTransport serverresolver.RegistryTransport,
+	sourceDateEpoch *int64,
 ) (*imageexport.ExportResponse, error) {
 	ctx, cancel, err := c.withClientCloseCancel(ctx)
 	if err != nil {
@@ -230,7 +241,7 @@ func (c *Client) PublishContainerImage(
 	if err != nil {
 		return nil, err
 	}
-	commitOpts, err := c.exportCommitOpts(forceCompression, useOCIMediaTypes)
+	commitOpts, err := c.exportCommitOpts(forceCompression, useOCIMediaTypes, sourceDateEpoch)
 	if err != nil {
 		return nil, err
 	}
@@ -260,6 +271,7 @@ func (c *Client) ExportContainerImage(
 	tarExport bool,
 	_ string,
 	useOCIMediaTypes bool,
+	sourceDateEpoch *int64,
 ) (*imageexport.ExportResponse, error) {
 	ctx, cancel, err := c.withClientCloseCancel(ctx)
 	if err != nil {
@@ -276,7 +288,7 @@ func (c *Client) ExportContainerImage(
 	if err != nil {
 		return nil, err
 	}
-	commitOpts, err := c.exportCommitOpts(forceCompression, useOCIMediaTypes)
+	commitOpts, err := c.exportCommitOpts(forceCompression, useOCIMediaTypes, sourceDateEpoch)
 	if err != nil {
 		return nil, err
 	}

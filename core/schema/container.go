@@ -747,6 +747,9 @@ func (s *containerSchema) Install(srv *dagql.Server) {
 					View(AfterVersion("v1.0.0-0")),
 				dagql.Arg("insecureSkipTLSVerify").Doc(`Allow HTTPS registry communication without verifying the server certificate.`).
 					View(AfterVersion("v1.0.0-0")),
+				dagql.Arg("rewriteTimestamp").Doc(
+					`Clamp file and image timestamps to this Unix epoch (in seconds) for reproducible digests.`,
+					`Defaults to the client's SOURCE_DATE_EPOCH environment variable when present.`),
 			),
 
 		dagql.NodeFunc("platform", s.platform).
@@ -780,6 +783,9 @@ func (s *containerSchema) Install(srv *dagql.Server) {
 				dagql.Arg("expand").Doc(
 					`Replace "${VAR}" or "$VAR" in the value of path according to the current `+
 						`environment variables defined in the container (e.g. "/$VAR/foo").`),
+				dagql.Arg("rewriteTimestamp").Doc(
+					`Clamp file and image timestamps to this Unix epoch (in seconds) for reproducible digests.`,
+					`Defaults to the client's SOURCE_DATE_EPOCH environment variable when present.`),
 			),
 		dagql.NodeFunc("export", s.exportLegacy).
 			WithInput(dagql.PerCallInput).
@@ -826,6 +832,9 @@ func (s *containerSchema) Install(srv *dagql.Server) {
 					`Defaults to OCI, which is largely compatible with most recent
 					container runtimes, but Docker may be needed for older runtimes without
 					OCI support.`),
+				dagql.Arg("rewriteTimestamp").Doc(
+					`Clamp file and image timestamps to this Unix epoch (in seconds) for reproducible digests.`,
+					`Defaults to the client's SOURCE_DATE_EPOCH environment variable when present.`),
 			),
 
 		dagql.NodeFunc("import", s.import_).
@@ -2535,6 +2544,7 @@ type containerPublishArgs struct {
 	RegistryService       dagql.Optional[core.ServiceID]
 	Protocol              dagql.Optional[core.RegistryProtocol]
 	InsecureSkipTLSVerify bool `name:"insecureSkipTLSVerify" default:"false"`
+	RewriteTimestamp      dagql.Optional[dagql.Int]
 }
 
 func (s *containerSchema) publish(ctx context.Context, parent dagql.ObjectResult[*core.Container], args containerPublishArgs) (dagql.String, error) {
@@ -2589,6 +2599,7 @@ func (s *containerSchema) publish(ctx context.Context, parent dagql.ObjectResult
 		args.MediaTypes,
 		registryServices,
 		registryTransport,
+		resolveSourceDateEpoch(ctx, args.RewriteTimestamp),
 	)
 	if err != nil {
 		return "", err
@@ -3334,6 +3345,19 @@ func cloneContainerForSchemaChild(ctx context.Context, parent dagql.ObjectResult
 	return ctr, parentPendingLazy, nil
 }
 
+// resolveSourceDateEpoch returns the effective epoch for timestamp clamping:
+// explicit arg wins, else the client's SOURCE_DATE_EPOCH env, else nil (wall-clock).
+func resolveSourceDateEpoch(ctx context.Context, explicit dagql.Optional[dagql.Int]) *int64 {
+	if explicit.Valid {
+		v := explicit.Value.Int64()
+		return &v
+	}
+	if md, err := engine.ClientMetadataFromContext(ctx); err == nil && md.SourceDateEpoch != nil {
+		return md.SourceDateEpoch
+	}
+	return nil
+}
+
 func expandEnvVar(ctx context.Context, parent *core.Container, input string, expand bool) (string, error) {
 	if !expand {
 		return input, nil
@@ -3994,6 +4018,7 @@ type containerExportArgs struct {
 	ForcedCompression dagql.Optional[core.ImageLayerCompression]
 	MediaTypes        core.ImageMediaTypes `default:"OCI"`
 	Expand            bool                 `default:"false"`
+	RewriteTimestamp  dagql.Optional[dagql.Int]
 }
 
 func (s *containerSchema) export(ctx context.Context, parent dagql.ObjectResult[*core.Container], args containerExportArgs) (dagql.String, error) {
@@ -4043,6 +4068,7 @@ func (s *containerSchema) export(ctx context.Context, parent dagql.ObjectResult[
 			ForcedCompression: args.ForcedCompression.Value,
 			MediaTypes:        args.MediaTypes,
 			Tar:               true,
+			SourceDateEpoch:   resolveSourceDateEpoch(ctx, args.RewriteTimestamp),
 		},
 	)
 	if err != nil {
@@ -4071,6 +4097,7 @@ type containerAsTarballArgs struct {
 	PlatformVariants  []core.ContainerID `default:"[]"`
 	ForcedCompression dagql.Optional[core.ImageLayerCompression]
 	MediaTypes        core.ImageMediaTypes `default:"OCI"`
+	RewriteTimestamp  dagql.Optional[dagql.Int]
 }
 
 func (s *containerSchema) asTarball(
@@ -4115,6 +4142,7 @@ func (s *containerSchema) asTarball(
 		args.ForcedCompression.Value,
 		args.MediaTypes,
 		"container.tar",
+		resolveSourceDateEpoch(ctx, args.RewriteTimestamp),
 	)
 	if err != nil {
 		return inst, err
