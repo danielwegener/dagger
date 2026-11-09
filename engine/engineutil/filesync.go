@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/dagger/dagger/internal/buildkit/session/filesync"
 	"github.com/dagger/dagger/internal/fsutil"
@@ -189,10 +190,26 @@ func (c *Client) LocalDirExport(
 	destPath string,
 	merge bool,
 	removePaths []string,
+	sourceDateEpoch *time.Time,
 ) error {
 	outputFS, err := fsutil.NewFS(srcPath)
 	if err != nil {
 		return err
+	}
+	if sourceDateEpoch != nil {
+		// clamp mtimes as they are sent; the source snapshot is untouched
+		epochNano := sourceDateEpoch.UnixNano()
+		outputFS, err = fsutil.NewFilterFS(outputFS, &fsutil.FilterOpt{
+			Map: func(_ string, stat *fsutiltypes.Stat) fsutil.MapResult {
+				if stat.ModTime > epochNano {
+					stat.ModTime = epochNano
+				}
+				return fsutil.MapResultKeep
+			},
+		})
+		if err != nil {
+			return err
+		}
 	}
 	return c.LocalFSExport(ctx, outputFS, destPath, merge, removePaths)
 }

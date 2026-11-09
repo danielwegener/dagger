@@ -6534,6 +6534,7 @@ class Directory(Type):
         path: str,
         *,
         wipe: bool | None = False,
+        source_date_epoch: int | None = None,
     ) -> str:
         """Writes the contents of the directory to a path on the host.
 
@@ -6549,6 +6550,12 @@ class Directory(Type):
             directory will be merged with any existing contents of the host
             directory, leaving any existing files on the host that aren't in
             the exported directory alone.
+        source_date_epoch:
+            Clamp the exported files' modification times to this time.
+            Formatted in seconds following Unix epoch (e.g., 1672531199). File
+            modification times later than this are set to it, as with
+            SOURCE_DATE_EPOCH. Defaults to the client's SOURCE_DATE_EPOCH
+            environment variable, if set.
 
         Returns
         -------
@@ -6567,6 +6574,7 @@ class Directory(Type):
         _args = [
             Arg("path", path),
             Arg("wipe", wipe, False),
+            Arg("sourceDateEpoch", source_date_epoch, None),
         ]
         _ctx = self._select("export", _args)
         return await _ctx.execute(str)

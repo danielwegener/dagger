@@ -222,14 +222,17 @@ defmodule Dagger.Directory do
   @doc """
   Writes the contents of the directory to a path on the host.
   """
-  @spec export(t(), String.t(), [{:wipe, boolean() | nil}]) ::
-          {:ok, String.t()} | {:error, term()}
+  @spec export(t(), String.t(), [
+          {:wipe, boolean() | nil},
+          {:source_date_epoch, integer() | nil}
+        ]) :: {:ok, String.t()} | {:error, term()}
   def export(%__MODULE__{} = directory, path, optional_args \\ []) do
     query_builder =
       directory.query_builder
       |> QB.select("export")
       |> QB.put_arg("path", path)
       |> QB.maybe_put_arg("wipe", optional_args[:wipe])
+      |> QB.maybe_put_arg("sourceDateEpoch", optional_args[:source_date_epoch])
 
     Client.execute(directory.client, query_builder)
   end

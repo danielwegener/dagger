@@ -2380,6 +2380,10 @@ func (state *ContainerExecState) evaluateOutputs(ctx context.Context, container 
 				AllowedLLMModules:     slices.Clone(clientMetadata.AllowedLLMModules),
 				UseRecipeIDsByDefault: execMD != nil && execMD.UseRecipeIDsByDefault,
 			}
+			if execMD != nil {
+				// the value this exec was keyed by, not the evaluating client's
+				nestedClientMetadata.SourceDateEpoch = execMD.SourceDateEpoch
+			}
 		}
 
 		procInfo := executor.ProcessInfo{Meta: meta}

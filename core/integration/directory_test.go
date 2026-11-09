@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1327,6 +1328,50 @@ func (DirectorySuite) TestExport(ctx context.Context, t *testctx.T) {
 		actual, err := dir.Export(ctx, "../")
 		require.NoError(t, err)
 		require.Contains(t, actual, "/")
+	})
+}
+
+func (DirectorySuite) TestExportSourceDateEpoch(ctx context.Context, t *testctx.T) {
+	const epoch = 1700000000
+	// WithNewFile stamps files with the current time, later than epoch
+	newDir := func(c *dagger.Client) *sdkcore.Directory {
+		return sdkcore.NewQuery(c).Directory().
+			WithNewFile("a.txt", "a").
+			WithNewFile("sub/b.txt", "b")
+	}
+	mtimes := func(t *testctx.T, dest string) []int64 {
+		var out []int64
+		for _, name := range []string{"a.txt", "sub/b.txt"} {
+			fi, err := os.Stat(filepath.Join(dest, name))
+			require.NoError(t, err)
+			out = append(out, fi.ModTime().Unix())
+		}
+		return out
+	}
+
+	t.Run("argument", func(ctx context.Context, t *testctx.T) {
+		c := connect(ctx, t)
+
+		dest := t.TempDir()
+		_, err := newDir(c).Export(ctx, dest)
+		require.NoError(t, err)
+		for _, mtime := range mtimes(t, dest) {
+			require.Greater(t, mtime, int64(epoch))
+		}
+
+		dest = t.TempDir()
+		_, err = newDir(c).Export(ctx, dest, sdkcore.DirectoryExportOpts{SourceDateEpoch: epoch})
+		require.NoError(t, err)
+		require.Equal(t, []int64{epoch, epoch}, mtimes(t, dest))
+	})
+
+	t.Run("client env default", func(ctx context.Context, t *testctx.T) {
+		c := connect(ctx, t, dagger.WithEnvironmentVariable("SOURCE_DATE_EPOCH", strconv.Itoa(epoch)))
+
+		dest := t.TempDir()
+		_, err := newDir(c).Export(ctx, dest)
+		require.NoError(t, err)
+		require.Equal(t, []int64{epoch, epoch}, mtimes(t, dest))
 	})
 }
 

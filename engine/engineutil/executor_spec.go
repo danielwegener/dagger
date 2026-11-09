@@ -1245,6 +1245,19 @@ func (c *Client) setProxyEnvs(_ context.Context, state *execState) error {
 	return nil
 }
 
+func (c *Client) setSourceDateEpoch(_ context.Context, state *execState) error {
+	if state.execMD == nil || state.execMD.SourceDateEpoch == nil {
+		return nil
+	}
+	if _, ok := state.origEnvMap["SOURCE_DATE_EPOCH"]; ok {
+		// set explicitly in the container, don't overwrite
+		return nil
+	}
+	state.spec.Process.Env = append(state.spec.Process.Env,
+		"SOURCE_DATE_EPOCH="+strconv.FormatInt(*state.execMD.SourceDateEpoch, 10))
+	return nil
+}
+
 func (c *Client) enableGPU(_ context.Context, state *execState) error {
 	if state.execMD == nil {
 		return nil

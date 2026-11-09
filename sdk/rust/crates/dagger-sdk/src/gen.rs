@@ -6612,6 +6612,10 @@ pub struct DirectoryWithNewDirectoryOpts {
 }
 #[derive(Builder, Debug, PartialEq)]
 pub struct DirectoryExportOpts {
+    /// Clamp the exported files' modification times to this time.
+    /// Formatted in seconds following Unix epoch (e.g., 1672531199). File modification times later than this are set to it, as with SOURCE_DATE_EPOCH. Defaults to the client's SOURCE_DATE_EPOCH environment variable, if set.
+    #[builder(setter(into, strip_option), default)]
+    pub source_date_epoch: Option<isize>,
     /// If true, then the host directory will be wiped clean before exporting so that it exactly matches the directory being exported; this means it will delete any files on the host that aren't in the exported dir. If false (the default), the contents of the directory will be merged with any existing contents of the host directory, leaving any existing files on the host that aren't in the exported directory alone.
     #[builder(setter(into, strip_option), default)]
     pub wipe: Option<bool>,
@@ -7401,6 +7405,9 @@ impl Directory {
         query = query.arg("path", path.into());
         if let Some(wipe) = opts.wipe {
             query = query.arg("wipe", wipe);
+        }
+        if let Some(source_date_epoch) = opts.source_date_epoch {
+            query = query.arg("sourceDateEpoch", source_date_epoch);
         }
         query.execute(self.graphql_client.clone()).await
     }

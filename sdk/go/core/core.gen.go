@@ -6727,6 +6727,10 @@ func (r *Directory) Exists(ctx context.Context, path string, opts ...DirectoryEx
 type DirectoryExportOpts struct {
 	// If true, then the host directory will be wiped clean before exporting so that it exactly matches the directory being exported; this means it will delete any files on the host that aren't in the exported dir. If false (the default), the contents of the directory will be merged with any existing contents of the host directory, leaving any existing files on the host that aren't in the exported directory alone.
 	Wipe bool
+	// Clamp the exported files' modification times to this time.
+	//
+	// Formatted in seconds following Unix epoch (e.g., 1672531199). File modification times later than this are set to it, as with SOURCE_DATE_EPOCH. Defaults to the client's SOURCE_DATE_EPOCH environment variable, if set.
+	SourceDateEpoch int
 }
 
 // Writes the contents of the directory to a path on the host.
@@ -6739,6 +6743,10 @@ func (r *Directory) Export(ctx context.Context, path string, opts ...DirectoryEx
 		// `wipe` optional argument
 		if !querybuilder.IsZeroValue(opts[i].Wipe) {
 			q = q.Arg("wipe", opts[i].Wipe)
+		}
+		// `sourceDateEpoch` optional argument
+		if !querybuilder.IsZeroValue(opts[i].SourceDateEpoch) {
+			q = q.Arg("sourceDateEpoch", opts[i].SourceDateEpoch)
 		}
 	}
 	q = q.Arg("path", path)

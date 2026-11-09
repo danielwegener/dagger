@@ -364,12 +364,15 @@ class Directory extends Client\AbstractObject implements Client\IdAble, Exportab
     /**
      * Writes the contents of the directory to a path on the host.
      */
-    public function export(string $path, ?bool $wipe = false): string
+    public function export(string $path, ?bool $wipe = false, ?int $sourceDateEpoch = null): string
     {
         $leafQueryBuilder = new \Dagger\Client\QueryBuilder('export');
         $leafQueryBuilder->setArgument('path', $path);
         if (null !== $wipe) {
         $leafQueryBuilder->setArgument('wipe', $wipe);
+        }
+        if (null !== $sourceDateEpoch) {
+        $leafQueryBuilder->setArgument('sourceDateEpoch', $sourceDateEpoch);
         }
         return (string)$this->queryLeaf($leafQueryBuilder, 'export');
     }

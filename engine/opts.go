@@ -275,6 +275,11 @@ type ClientMetadata struct {
 	// ProfileEBPF names the eBPF programs a profiled session asks for (see
 	// engine/ebpf/wcbpf), loaded while it lasts.
 	ProfileEBPF []string `json:"profile_ebpf,omitempty"`
+
+	// SourceDateEpoch is the client's SOURCE_DATE_EPOCH, in seconds since the
+	// Unix epoch. It is the default for sourceDateEpoch arguments the client
+	// omits, and is set as SOURCE_DATE_EPOCH in the client's exec containers.
+	SourceDateEpoch *int64 `json:"source_date_epoch,omitempty"`
 }
 
 type suppressTelemetryCtxKey struct{}

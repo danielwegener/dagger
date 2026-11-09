@@ -1,0 +1,7 @@
+kind: Added
+body: |
+  `Directory.export` gains a `sourceDateEpoch` argument that clamps exported file modification times. When a client sets `SOURCE_DATE_EPOCH`, it becomes the default for `sourceDateEpoch` on `Container.publish`, `export`, `exportImage`, `asTarball` and `Directory.export`, and is set in the client's exec containers unless the container sets it already.
+time: 2026-11-09T12:00:00Z
+custom:
+  Author: danielwegener
+  PR: "13419"

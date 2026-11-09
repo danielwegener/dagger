@@ -3098,6 +3098,15 @@ type Directory implements Exportable & Node & Syncer {
     aren't in the exported directory alone.
     """
     wipe: Boolean = false
+
+    """
+    Clamp the exported files' modification times to this time.
+
+    Formatted in seconds following Unix epoch (e.g., 1672531199). File
+    modification times later than this are set to it, as with SOURCE_DATE_EPOCH.
+    Defaults to the client's SOURCE_DATE_EPOCH environment variable, if set.
+    """
+    sourceDateEpoch: Int
   ): String!
 
   """

@@ -5349,6 +5349,68 @@ RUN mkdir -p /app/lib && echo hello > /app/lib/a.txt && touch -d "@$NONCE" /app/
 	}
 }
 
+func (ContainerSuite) TestSourceDateEpochFromClientEnv(ctx context.Context, t *testctx.T) {
+	const (
+		epoch1 = 1700000000
+		epoch2 = 1600000000
+	)
+	c1 := connect(ctx, t, dagger.WithEnvironmentVariable("SOURCE_DATE_EPOCH", strconv.Itoa(epoch1)))
+	c2 := connect(ctx, t, dagger.WithEnvironmentVariable("SOURCE_DATE_EPOCH", strconv.Itoa(epoch2)))
+	c3 := connect(ctx, t)
+
+	// the same container from each client, so a result cached for one client
+	// would show up for the others
+	ctr := func(c *dagger.Client) *sdkcore.Container {
+		return sdkcore.NewQuery(c).Container().From(alpineImage).WithNewFile("/repro.txt", "reproducible")
+	}
+	createdAt := func(t *testctx.T, file *sdkcore.File) int64 {
+		tarPath := filepath.Join(t.TempDir(), "image.tar")
+		_, err := file.Export(ctx, tarPath)
+		require.NoError(t, err)
+		var index ocispecs.Index
+		require.NoError(t, json.Unmarshal(readTarFile(t, tarPath, "index.json"), &index))
+		var manifest ocispecs.Manifest
+		require.NoError(t, json.Unmarshal(readTarFile(t, tarPath, "blobs/sha256/"+index.Manifests[0].Digest.Encoded()), &manifest))
+		var config ocispecs.Image
+		require.NoError(t, json.Unmarshal(readTarFile(t, tarPath, "blobs/sha256/"+manifest.Config.Digest.Encoded()), &config))
+		if config.Created == nil {
+			return 0
+		}
+		return config.Created.Unix()
+	}
+
+	t.Run("exec env", func(ctx context.Context, t *testctx.T) {
+		echo := []string{"sh", "-c", "echo -n ${SOURCE_DATE_EPOCH:-unset}"}
+		for _, tc := range []struct {
+			c    *dagger.Client
+			want string
+		}{
+			{c1, strconv.Itoa(epoch1)},
+			{c2, strconv.Itoa(epoch2)},
+			{c3, "unset"},
+		} {
+			out, err := ctr(tc.c).WithExec(echo).Stdout(ctx)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, out)
+		}
+
+		// a value set on the container wins
+		out, err := ctr(c1).WithEnvVariable("SOURCE_DATE_EPOCH", "42").WithExec(echo).Stdout(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "42", out)
+	})
+
+	t.Run("asTarball default", func(ctx context.Context, t *testctx.T) {
+		require.Equal(t, int64(epoch1), createdAt(t, ctr(c1).AsTarball()))
+		require.Equal(t, int64(epoch2), createdAt(t, ctr(c2).AsTarball()))
+		require.NotContains(t, []int64{epoch1, epoch2}, createdAt(t, ctr(c3).AsTarball()))
+
+		// an explicit argument wins
+		const explicit = 1500000000
+		require.Equal(t, int64(explicit), createdAt(t, ctr(c1).AsTarball(sdkcore.ContainerAsTarballOpts{SourceDateEpoch: explicit})))
+	})
+}
+
 func (ContainerSuite) TestMediaTypes(ctx context.Context, t *testctx.T) {
 	for _, tc := range []struct {
 		mediaTypes           sdkcore.ImageMediaTypes

@@ -902,7 +902,7 @@ func (s *containerSchema) Install(srv *dagql.Server) {
 					View(AfterVersion("v1.0.0-beta.22")),
 			),
 
-		dagql.NodeFunc("asTarball", s.asTarball).
+		dagql.NodeFuncWithDynamicInputs("asTarball", s.asTarball, s.asTarballDynamicInputs).
 			IsPersistable().
 			Doc(`Package the container state as an OCI image, and return it as a tar archive`).
 			Args(
@@ -1844,6 +1844,10 @@ func (s *containerSchema) withExecDynamicInputs(
 	args containerExecArgs,
 	req *dagql.CallRequest,
 ) error {
+	// the exec's env gets the client's SOURCE_DATE_EPOCH (see withExec)
+	if err := setClientSourceDateEpochInput(ctx, req); err != nil {
+		return err
+	}
 	if args.ModuleContext.Valid {
 		return nil
 	}
@@ -1898,6 +1902,15 @@ func (s *containerSchema) withExec(ctx context.Context, parent dagql.ObjectResul
 	var md *engineutil.ExecutionMetadata
 	if args.ExecMD.Self != nil {
 		md = args.ExecMD.Self
+	}
+	if epoch := clientSourceDateEpoch(ctx); epoch != nil {
+		// withExecDynamicInputs keyed the call by this client's value
+		withEpoch := engineutil.ExecutionMetadata{}
+		if md != nil {
+			withEpoch = *md
+		}
+		withEpoch.SourceDateEpoch = epoch
+		md = &withEpoch
 	}
 	var moduleContext dagql.ObjectResult[*core.Module]
 	if args.ModuleContext.Valid {
@@ -2969,7 +2982,7 @@ func (s *containerSchema) publish(ctx context.Context, parent dagql.ObjectResult
 		args.Address.String(),
 		variants,
 		args.ForcedCompression.Value,
-		sourceDateEpochArg(args.SourceDateEpoch),
+		sourceDateEpochArg(ctx, args.SourceDateEpoch),
 		args.MediaTypes,
 		registryServices,
 		registryTransport,
@@ -4614,7 +4627,7 @@ func (s *containerSchema) export(ctx context.Context, parent dagql.ObjectResult[
 			Dest:              path,
 			PlatformVariants:  variants,
 			ForcedCompression: args.ForcedCompression.Value,
-			SourceDateEpoch:   sourceDateEpochArg(args.SourceDateEpoch),
+			SourceDateEpoch:   sourceDateEpochArg(ctx, args.SourceDateEpoch),
 			MediaTypes:        args.MediaTypes,
 			Tar:               true,
 		},
@@ -4643,13 +4656,52 @@ func (s *containerSchema) exportLegacy(ctx context.Context, parent dagql.ObjectR
 }
 
 // sourceDateEpochArg converts an optional sourceDateEpoch argument, in seconds
-// since the Unix epoch, to the time image export clamps timestamps to.
-func sourceDateEpochArg(arg dagql.Optional[dagql.Int]) *time.Time {
-	if !arg.Valid {
+// since the Unix epoch, to the time export clamps timestamps to. An omitted
+// argument defaults to the calling client's SOURCE_DATE_EPOCH.
+func sourceDateEpochArg(ctx context.Context, arg dagql.Optional[dagql.Int]) *time.Time {
+	seconds := clientSourceDateEpoch(ctx)
+	if arg.Valid {
+		explicit := arg.Value.Int64()
+		seconds = &explicit
+	}
+	if seconds == nil {
 		return nil
 	}
-	epoch := time.Unix(arg.Value.Int64(), 0).UTC()
+	epoch := time.Unix(*seconds, 0).UTC()
 	return &epoch
+}
+
+// clientSourceDateEpoch returns the calling client's SOURCE_DATE_EPOCH, if set.
+func clientSourceDateEpoch(ctx context.Context) *int64 {
+	clientMD, err := engine.ClientMetadataFromContext(ctx)
+	if err != nil {
+		return nil
+	}
+	return clientMD.SourceDateEpoch
+}
+
+// setClientSourceDateEpochInput adds the calling client's SOURCE_DATE_EPOCH to
+// the call's identity when the call depends on it, so cached results are not
+// shared with clients that have a different value. Calls from clients without
+// one keep their identity.
+func setClientSourceDateEpochInput(ctx context.Context, req *dagql.CallRequest) error {
+	epoch := clientSourceDateEpoch(ctx)
+	if epoch == nil {
+		return nil
+	}
+	return req.SetImplicitInput(ctx, "clientSourceDateEpoch", dagql.NewInt(*epoch))
+}
+
+func (s *containerSchema) asTarballDynamicInputs(
+	ctx context.Context,
+	_ dagql.ObjectResult[*core.Container],
+	args containerAsTarballArgs,
+	req *dagql.CallRequest,
+) error {
+	if args.SourceDateEpoch.Valid {
+		return nil
+	}
+	return setClientSourceDateEpochInput(ctx, req)
 }
 
 type containerAsTarballArgs struct {
@@ -4687,7 +4739,7 @@ func (s *containerSchema) asTarball(
 		Parent:            parent,
 		PlatformVariants:  platformVariants,
 		ForcedCompression: args.ForcedCompression.Value,
-		SourceDateEpoch:   sourceDateEpochArg(args.SourceDateEpoch),
+		SourceDateEpoch:   sourceDateEpochArg(ctx, args.SourceDateEpoch),
 		MediaTypes:        args.MediaTypes,
 	})
 }
@@ -4751,7 +4803,7 @@ func (s *containerSchema) exportImage(
 		Dest:              refName.String(),
 		PlatformVariants:  platformVariants,
 		ForcedCompression: args.ForcedCompression.Value,
-		SourceDateEpoch:   sourceDateEpochArg(args.SourceDateEpoch),
+		SourceDateEpoch:   sourceDateEpochArg(ctx, args.SourceDateEpoch),
 		MediaTypes:        args.MediaTypes,
 		Tar:               false,
 	})

@@ -163,6 +163,11 @@ type ExecutionMetadata struct {
 	// json:"-" is load-bearing for the same reason as ProfArgs above: this
 	// run-time-only value must never perturb an exec cache key.
 	ContentPreferredDigest func() digest.Digest `json:"-"`
+
+	// SourceDateEpoch is set as SOURCE_DATE_EPOCH in the container's env unless
+	// the container sets it already. It is captured from the calling client
+	// when the exec is resolved, and the exec's identity includes it.
+	SourceDateEpoch *int64 `json:",omitempty"`
 }
 
 // SystemEnvEntry returns a SystemEnvNames entry for the env var name. With a
@@ -257,6 +262,7 @@ func (c *Client) Run(
 		namedSetupFunc{"setupOTel", c.setupOTel},
 		namedSetupFunc{"setupSecretScrubbing", c.setupSecretScrubbing},
 		namedSetupFunc{"setProxyEnvs", c.setProxyEnvs},
+		namedSetupFunc{"setSourceDateEpoch", c.setSourceDateEpoch},
 		namedSetupFunc{"enableGPU", c.enableGPU},
 		namedSetupFunc{"createCWD", c.createCWD},
 		namedSetupFunc{"setupNestedClient", c.setupNestedClient},

@@ -2081,6 +2081,11 @@ func (c *Client) clientMetadata() engine.ClientMetadata {
 	if !c.LLMConfig.IsEmpty() {
 		md.LLMConfig = c.LLMConfig
 	}
+	if epochStr := os.Getenv("SOURCE_DATE_EPOCH"); epochStr != "" {
+		if epoch, err := strconv.ParseInt(epochStr, 10, 64); err == nil {
+			md.SourceDateEpoch = &epoch
+		}
+	}
 
 	return md
 }

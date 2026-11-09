@@ -1799,6 +1799,13 @@ export type DirectoryExportOpts = {
    * If true, then the host directory will be wiped clean before exporting so that it exactly matches the directory being exported; this means it will delete any files on the host that aren't in the exported dir. If false (the default), the contents of the directory will be merged with any existing contents of the host directory, leaving any existing files on the host that aren't in the exported directory alone.
    */
   wipe?: boolean
+
+  /**
+   * Clamp the exported files' modification times to this time.
+   *
+   * Formatted in seconds following Unix epoch (e.g., 1672531199). File modification times later than this are set to it, as with SOURCE_DATE_EPOCH. Defaults to the client's SOURCE_DATE_EPOCH environment variable, if set.
+   */
+  sourceDateEpoch?: number
 }
 
 export type DirectoryFilterOpts = {
@@ -8957,6 +8964,9 @@ export class Directory extends BaseClient {
    * Writes the contents of the directory to a path on the host.
    * @param path Location of the copied directory (e.g., "logs/").
    * @param opts.wipe If true, then the host directory will be wiped clean before exporting so that it exactly matches the directory being exported; this means it will delete any files on the host that aren't in the exported dir. If false (the default), the contents of the directory will be merged with any existing contents of the host directory, leaving any existing files on the host that aren't in the exported directory alone.
+   * @param opts.sourceDateEpoch Clamp the exported files' modification times to this time.
+   *
+   * Formatted in seconds following Unix epoch (e.g., 1672531199). File modification times later than this are set to it, as with SOURCE_DATE_EPOCH. Defaults to the client's SOURCE_DATE_EPOCH environment variable, if set.
    */
   export = async (
     path: string,
