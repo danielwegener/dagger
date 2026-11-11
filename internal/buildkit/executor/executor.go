@@ -32,6 +32,14 @@ type Meta struct {
 	// the host provides them. Otherwise it is started with them switched off,
 	// except where its program asks for them.
 	TransparentHugePages bool
+
+	// Cgroup resource limits. Zero value means no limit.
+	MemoryBytes     int64  // cgroup memory.max (hard limit, bytes)
+	MemorySoftBytes int64  // cgroup memory.high (soft limit, bytes)
+	CPUQuota        int64  // cgroup cpu.max quota (microseconds per period)
+	CPUPeriod       uint64 // cgroup cpu.max period (microseconds); 0 → default 100000
+	CPUShares       int64  // cgroup cpu.weight (relative weight, 1-10000)
+	PidsLimit       int64  // cgroup pids.max
 }
 
 type MountableRef interface {

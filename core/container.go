@@ -140,6 +140,10 @@ type Container struct {
 	// DefaultArgs have been explicitly set by the user
 	DefaultArgs bool
 
+	// DefaultExecResources are cgroup resource constraints applied to subsequent
+	// execs unless overridden per-exec via ContainerExecOpts.Resources.
+	DefaultExecResources *ContainerExecResources `json:"defaultExecResources,omitempty"`
+
 	Lazy Lazy[*Container]
 
 	// storedParts records completed values decoded from persistence. It is
@@ -601,20 +605,21 @@ type persistedContainerMetadata struct {
 }
 
 type persistedContainerMetadataValue struct {
-	Config             dockerspec.DockerOCIImageConfig     `json:"config"`
-	EnabledGPUs        []string                            `json:"enabledGPUs,omitempty"`
-	Mounts             []persistedContainerMountPayload    `json:"mounts,omitempty"`
-	Secrets            []persistedContainerSecretPayload   `json:"secrets,omitempty"`
-	Sockets            []persistedContainerSocketPayload   `json:"sockets,omitempty"`
-	Platform           Platform                            `json:"platform"`
-	Annotations        []containerutil.ContainerAnnotation `json:"annotations,omitempty"`
-	ImageRef           string                              `json:"imageRef,omitempty"`
-	Ports              []Port                              `json:"ports,omitempty"`
-	Services           []persistedServiceBinding           `json:"services,omitempty"`
-	DefaultTerminalCmd DefaultTerminalCmdOpts              `json:"defaultTerminalCmd"`
-	SystemEnvNames     []string                            `json:"systemEnvNames,omitempty"`
-	VolatileEnv        []string                            `json:"volatileEnv,omitempty"`
-	DefaultArgs        bool                                `json:"defaultArgs,omitempty"`
+	Config               dockerspec.DockerOCIImageConfig     `json:"config"`
+	EnabledGPUs          []string                            `json:"enabledGPUs,omitempty"`
+	Mounts               []persistedContainerMountPayload    `json:"mounts,omitempty"`
+	Secrets              []persistedContainerSecretPayload   `json:"secrets,omitempty"`
+	Sockets              []persistedContainerSocketPayload   `json:"sockets,omitempty"`
+	Platform             Platform                            `json:"platform"`
+	Annotations          []containerutil.ContainerAnnotation `json:"annotations,omitempty"`
+	ImageRef             string                              `json:"imageRef,omitempty"`
+	Ports                []Port                              `json:"ports,omitempty"`
+	Services             []persistedServiceBinding           `json:"services,omitempty"`
+	DefaultTerminalCmd   DefaultTerminalCmdOpts              `json:"defaultTerminalCmd"`
+	SystemEnvNames       []string                            `json:"systemEnvNames,omitempty"`
+	VolatileEnv          []string                            `json:"volatileEnv,omitempty"`
+	DefaultArgs          bool                                `json:"defaultArgs,omitempty"`
+	DefaultExecResources *ContainerExecResources             `json:"defaultExecResources,omitempty"`
 
 	// FromContentDigestSafe keeps Container.fromContentDigestSafe: a scratch
 	// container read back from the cache is still one From may give a
@@ -1158,6 +1163,7 @@ func materializeContainerStateFromParent(ctx context.Context, dst *Container, pa
 	dst.DefaultTerminalCmd = parent.Self().DefaultTerminalCmd
 	dst.SystemEnvNames = slices.Clone(parent.Self().SystemEnvNames)
 	dst.DefaultArgs = parent.Self().DefaultArgs
+	dst.DefaultExecResources = parent.Self().DefaultExecResources
 	return nil
 }
 
@@ -1659,20 +1665,21 @@ func (container *Container) encodeContainerMetadata(enc *dagql.PersistEncodeCont
 	}
 
 	payload := persistedContainerMetadataValue{
-		Config:             container.Config,
-		EnabledGPUs:        slices.Clone(container.EnabledGPUs),
-		Mounts:             make([]persistedContainerMountPayload, 0, len(container.Mounts)),
-		Secrets:            make([]persistedContainerSecretPayload, 0, len(container.Secrets)),
-		Sockets:            make([]persistedContainerSocketPayload, 0, len(container.Sockets)),
-		Platform:           container.Platform,
-		Annotations:        slices.Clone(container.Annotations),
-		ImageRef:           container.ImageRef,
-		Ports:              slices.Clone(container.Ports),
-		Services:           services,
-		DefaultTerminalCmd: container.DefaultTerminalCmd,
-		SystemEnvNames:     slices.Clone(container.SystemEnvNames),
-		VolatileEnv:        slices.Clone(container.VolatileEnv),
-		DefaultArgs:        container.DefaultArgs,
+		Config:               container.Config,
+		EnabledGPUs:          slices.Clone(container.EnabledGPUs),
+		Mounts:               make([]persistedContainerMountPayload, 0, len(container.Mounts)),
+		Secrets:              make([]persistedContainerSecretPayload, 0, len(container.Secrets)),
+		Sockets:              make([]persistedContainerSocketPayload, 0, len(container.Sockets)),
+		Platform:             container.Platform,
+		Annotations:          slices.Clone(container.Annotations),
+		ImageRef:             container.ImageRef,
+		Ports:                slices.Clone(container.Ports),
+		Services:             services,
+		DefaultTerminalCmd:   container.DefaultTerminalCmd,
+		SystemEnvNames:       slices.Clone(container.SystemEnvNames),
+		VolatileEnv:          slices.Clone(container.VolatileEnv),
+		DefaultArgs:          container.DefaultArgs,
+		DefaultExecResources: container.DefaultExecResources,
 
 		FromContentDigestSafe: container.fromContentDigestSafe,
 	}
@@ -1895,22 +1902,23 @@ func (*Container) DecodePersistedObject(ctx context.Context, dec *dagql.PersistD
 	}
 
 	container := &Container{
-		FS:                 fs,
-		Config:             persisted.Config,
-		EnabledGPUs:        slices.Clone(persisted.EnabledGPUs),
-		Mounts:             mounts,
-		MetaSnapshot:       metaAccessor,
-		Platform:           persisted.Platform,
-		Annotations:        slices.Clone(persisted.Annotations),
-		Secrets:            secrets,
-		Sockets:            sockets,
-		ImageRef:           persisted.ImageRef,
-		Ports:              slices.Clone(persisted.Ports),
-		Services:           services,
-		DefaultTerminalCmd: persisted.DefaultTerminalCmd,
-		SystemEnvNames:     slices.Clone(persisted.SystemEnvNames),
-		VolatileEnv:        slices.Clone(persisted.VolatileEnv),
-		DefaultArgs:        persisted.DefaultArgs,
+		FS:                   fs,
+		Config:               persisted.Config,
+		EnabledGPUs:          slices.Clone(persisted.EnabledGPUs),
+		Mounts:               mounts,
+		MetaSnapshot:         metaAccessor,
+		Platform:             persisted.Platform,
+		Annotations:          slices.Clone(persisted.Annotations),
+		Secrets:              secrets,
+		Sockets:              sockets,
+		ImageRef:             persisted.ImageRef,
+		Ports:                slices.Clone(persisted.Ports),
+		Services:             services,
+		DefaultTerminalCmd:   persisted.DefaultTerminalCmd,
+		SystemEnvNames:       slices.Clone(persisted.SystemEnvNames),
+		VolatileEnv:          slices.Clone(persisted.VolatileEnv),
+		DefaultArgs:          persisted.DefaultArgs,
+		DefaultExecResources: persisted.DefaultExecResources,
 
 		fromContentDigestSafe: persisted.FromContentDigestSafe,
 	}
@@ -7724,6 +7732,10 @@ type ContainerAsServiceArgs struct {
 	// Skip the init process injected into containers by default so that the
 	// user's process is PID 1
 	NoInit bool `default:"false"`
+
+	// Resource constraints for the service container (cgroup limits).
+	// If nil, inherits the container's DefaultExecResources if set.
+	Resources *ContainerExecResources `default:"null"`
 }
 
 func (container *Container) AsService(ctx context.Context, containerRes dagql.ObjectResult[*Container], args ContainerAsServiceArgs) (*Service, error) {
@@ -7760,6 +7772,7 @@ func (container *Container) AsService(ctx context.Context, containerRes dagql.Ob
 		DaggerInDaggerNewSession:      args.DaggerInDaggerNewSession,
 		InsecureRootCapabilities:      args.InsecureRootCapabilities,
 		NoInit:                        args.NoInit,
+		Resources:                     args.Resources,
 	}, nil
 }
 
