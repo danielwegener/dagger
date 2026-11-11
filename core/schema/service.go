@@ -49,6 +49,9 @@ func (s *serviceSchema) Install(srv *dagql.Server) {
 					`This should only be used if the user requires that their exec process be the
 					pid 1 process in the container. Otherwise it may result in unexpected behavior.`,
 				),
+				dagql.Arg("resources").Doc(
+					`Cgroup resource constraints for the service container.`,
+					`If unset, inherits the container's default exec resources if configured.`),
 			),
 
 		dagql.NodeFunc("up", s.containerUpLegacy).
@@ -94,6 +97,9 @@ func (s *serviceSchema) Install(srv *dagql.Server) {
 					`This should only be used if the user requires that their exec process be the
 					pid 1 process in the container. Otherwise it may result in unexpected behavior.`,
 				),
+				dagql.Arg("resources").Doc(
+					`Cgroup resource constraints for the service container.`,
+					`If unset, inherits the container's default exec resources if configured.`),
 			),
 	}.Install(srv)
 
@@ -370,6 +376,23 @@ func (s *serviceSchema) containerUp(ctx context.Context, ctr dagql.ObjectResult[
 		inputs = append(inputs, dagql.NamedInput{
 			Name:  "noInit",
 			Value: dagql.Boolean(true),
+		})
+	}
+	if args.Resources != nil {
+		r := args.Resources
+		resInput, err := (dagql.InputObject[core.ContainerExecResources]{}).Decoder().DecodeInput(map[string]any{
+			"memoryBytes":     r.MemoryBytes,
+			"memorySoftBytes": r.MemorySoftBytes,
+			"cpus":            r.CPUs,
+			"cpushares":       r.CPUShares,
+			"pids":            r.Pids,
+		})
+		if err != nil {
+			return res, fmt.Errorf("encode resources: %w", err)
+		}
+		inputs = append(inputs, dagql.NamedInput{
+			Name:  "resources",
+			Value: resInput.(dagql.Input),
 		})
 	}
 
